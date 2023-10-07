@@ -42,7 +42,7 @@ INSTANCE_MANAGER_PATH = 'C:\\Program Files\\BlueStacks_nxt\\HD-MultiInstanceMana
 INSTANCES_TO_START: int = 1 #-> default instances ram allocation is 4 Gb, this means that to run 4 instances you need 16 Gb available!
 INSTANCES: tuple = (1, 8) #-> indicates how many instances you have and which instances to use (default: from instance at first place to instance at eighth place)
 #OCCHIO A QUESTO VALORE!!!
-assert INSTANCES_TO_START < INSTANCES[1]
+assert INSTANCES_TO_START <= INSTANCES[1]
 
 INSTANCES_NAMES: list = [ #You have to name each instance like this:
     "1.Bot",
@@ -163,6 +163,7 @@ def Enstablish_AdbConnections():
 
 def Syncronize_Actions(actions: str): #takes in input a str format of some commands (actions) to execute on each instance instances
     for number in range(INSTANCES_TO_START):
+        instance = globals()[f'instance_{number}']
         exec(actions)
         sleep(0.2)
     sleep(1)
@@ -176,40 +177,20 @@ def Start_the_Game():
 
     print(f"[{Colors['Green']}Android Debugging Bridge{Colors['Reset']}]: Starting pixel survival game 2 on each instance...".ljust(ljust_val), flush=True, end="")
     #For each BlueStacks Instance, we run the first psg2 app
-    action = """
-instance = globals()[f'instance_{number}']
-instance.device.shell(f'monkey -p "{next(get_package(instance))}" -c android.intent.category.LAUNCHER 1')"""
-    Syncronize_Actions(actions=action)
+    Syncronize_Actions("""instance.device.shell(f'monkey -p "{next(get_package(instance))}" -c android.intent.category.LAUNCHER 1')""")
 
-    #Then we SHOULD check if the app has been booted  -> we wait 13 seconds. The better way would be to screenshot the screen of each instance and check if the game has been booted
-    sleep(13)
+    #TODO: Then we SHOULD check if the app has been booted  -> we wait 13 seconds. The better way would be to screenshot the screen of each instance and check if the game has been booted
+    sleep(13) #The time depends on how many Ram left the user has. I tested it on 3 Gb Ram remaining
     print(f"-> [{Colors['Green']}Done{Colors['Reset']}!]")
 
-    action = """
-instance = globals()[f'instance_{number}']
-instance.device.shell(f"input tap {in_game_buttons['Play'][0]} {in_game_buttons['Play'][1]}")""" #Clicks on 'Play' button
-    Syncronize_Actions(actions=action)
-
-    action = """
-instance = globals()[f'instance_{number}']
-instance.device.shell(f"input tap {in_game_buttons['First Character'][0]} {in_game_buttons['First Character'][1]}")"""
-    Syncronize_Actions(actions=action)
-
-    action = """
-instance = globals()[f'instance_{number}']
-instance.device.shell(f"input tap {in_game_buttons['Single Player'][0]} {in_game_buttons['Single Player'][1]}")"""
-    Syncronize_Actions(actions=action)
-
-    action = """
-instance = globals()[f'instance_{number}']
-instance.device.shell(f"input touchscreen swipe {in_game_buttons['Left Movement'][0]} {in_game_buttons['Left Movement'][1]} {in_game_buttons['Left Movement'][0]} {in_game_buttons['Left Movement'][1]} 1350")"""
-    Syncronize_Actions(actions=action)
+    Syncronize_Actions("""instance.device.shell(f"input tap {in_game_buttons['Play'][0]} {in_game_buttons['Play'][1]}")""") #Clicks on 'Play' button
+    Syncronize_Actions("""instance.device.shell(f"input tap {in_game_buttons['First Character'][0]} {in_game_buttons['First Character'][1]}")""")
+    Syncronize_Actions("""instance.device.shell(f"input tap {in_game_buttons['Single Player'][0]} {in_game_buttons['Single Player'][1]}")""")
+    Syncronize_Actions("""instance.device.shell(f"input touchscreen swipe {in_game_buttons['Left Movement'][0]} {in_game_buttons['Left Movement'][1]} {in_game_buttons['Left Movement'][0]} {in_game_buttons['Left Movement'][1]} 1350")""")
 
     print(f"[{Colors['Red']}In-Game Action{Colors['Reset']}]: Hitting ad-chest one time and wait for ad to come...".ljust(ljust_val), flush=True, end="")
-    action = """
-instance = globals()[f'instance_{number}']
-instance.device.shell(f"input tap {in_game_buttons['Hit Button'][0]} {in_game_buttons['Hit Button'][1]}")"""
-    Syncronize_Actions(actions=action)
+
+    Syncronize_Actions("""instance.device.shell(f"input tap {in_game_buttons['Hit Button'][0]} {in_game_buttons['Hit Button'][1]}")""")
 
     #Now the Ad should appear in about 10 seconds...
     print(f"-> [{Colors['Red']}Ad Watched{Colors['Reset']}!]")
