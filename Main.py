@@ -21,6 +21,8 @@ in_game_buttons: dict[str, ('X', 'Y')] = {
 }
 
 from ppadb.client import Client as AdbClient
+from cv2 import imread
+from os import listdir, mkdir
 from time import sleep
 from subprocess import Popen, run, DEVNULL, STDOUT
 from pywinauto import Desktop, timings, mouse
@@ -39,27 +41,32 @@ INSTANCE_MANAGER_PATH = 'C:\\Program Files\\BlueStacks_nxt\\HD-MultiInstanceMana
 
 #Normally PSG 2 runs good at 1 Core and 1Gb of Ram but all depends on how many cores your CPU has and what's the Clock speed of your CPU and RAM.
 
-INSTANCES_TO_START: int = 1 #-> default instances ram allocation is 4 Gb, this means that to run 4 instances you need 16 Gb available!
+INSTANCES_TO_START: int = 3 #-> default instances ram allocation is 4 Gb, this means that to run 4 instances you need 16 Gb available!
 INSTANCES: tuple = (1, 8) #-> indicates how many instances you have and which instances to use (default: from instance at first place to instance at eighth place)
 #OCCHIO A QUESTO VALORE!!!
 assert INSTANCES_TO_START <= INSTANCES[1]
 
+instances_status: dict = {
+    f'instance_{num}': 'Offline' for num in range(INSTANCES_TO_START)
+}
+#Possible status: {Offline}, {Online}, {On-Game}, {Waiting-for-Ad}, {Watching-Ad}
+
 INSTANCES_NAMES: list = [ #You have to name each instance like this:
-    "1.Bot",
-    "2.Bot",
-    "3.Bot",
-    "4.Bot",
-    "5.Bot",
-    "6.Bot",
-    "7.Bot",
-    "8.Bot"
+    '1.Bot',
+    '2.Bot',
+    '3.Bot',
+    '4.Bot',
+    '5.Bot',
+    '6.Bot',
+    '7.Bot',
+    '8.Bot'
 ]
 
 #Code variables:
 ljust_val = 110
 Pywinauto_Window_Connection = lambda window_name: Desktop(backend='uia').window(title=window_name) #Connecting to the application trought its name)
 
-def Start_BlueStacks():
+def StartBlueStacks():
     input(f"[{Colors['Red']}System{Colors['Reset']}]: Press enter to kill BlueStacks services : ")
 
     try:
@@ -73,26 +80,28 @@ def Start_BlueStacks():
     sleep(3)
     print(f"-> [{Colors['Green']}Done{Colors['Reset']}!]")
 
-def Click_Input_Fixed(method: classmethod): #If the mouse is mooving crazy, then the click won't work and so the program will cause issues.
+def ClickInputFixed(method: classmethod): #If the mouse is mooving crazy, then the click won't work and so the program will cause issues.
     """This function fix click_input() method preventing user mouse input to change mouse X, Y while clicking on the button."""
     ENABLE_MOUSE_INPUT = False
     sleep(0.5)
     method()
-    ENABLE_MOUSE_INPUT = True
     sleep(0.5)
+    ENABLE_MOUSE_INPUT = True
 
-def Start_Instances(n: tuple):
+def StartInstances(n: tuple):
     print(f"[{Colors['Blue']}BlueStacks{Colors['Reset']}]: Starting {n[0]}-{n[1]} instances...".ljust(ljust_val), end="", flush=True)
-    for i in range(2, n[1]-n[0]+3): #instance_manager.print_control_identifiers() function shows all BlueStacks GUI buttons. Each instance has a checkbox and its name is 'CheckBoxN' where N is the number of the place of the instance + 1. Ex: instance 1 has 'CheckBox2'
+    for i in range(2, n[1]-n[0]+3):
+        #instance_manager.print_control_identifiers() function shows all BlueStacks GUI buttons. Each instance has a checkbox and its name is 'CheckBoxN' where N is the number of the place of the instance + 1. Ex: instance 1 has 'CheckBox2'
         exec(f"instance_manager.CheckBox{i}.click()")
         sleep(0.4)
 
-    Click_Input_Fixed(method=instance_manager.Start.click_input)
+    ClickInputFixed(method=instance_manager.Start.click_input)
     wait_window(window_name=f"{n[1]}.Bot") #The n[1] instance is the last instance that bluestacks starts
     print(f"-> [{Colors['Green']}Done{Colors['Reset']}!]")
 
     print(f"[{Colors['Green']}Python{Colors['Reset']}]: Connecting with spawned instances...")
     for i in range(n[0], n[1]+1):
+        instances_status[f'instance_{i}'] = 'Online'
         print(f"\t[{Colors['Blue']}{i}.Bot{Colors['Reset']}] Instance : ", end=f"-> [{Colors['Red']}Offline{Colors['Reset']}!]", flush=True)
         wait_window(window_name=f"{i}.Bot")
         # globals()[f'instance{i}'] = Pywinauto_Window_Connection(window_name=f'{i}.Bot') #Creating global variables like instance_manager variable; each variable refeeres to each Bot instance
@@ -106,9 +115,9 @@ def Syncronize_MasterInstance(instance: str):
     """This function sets a give instance under 'Master' role, which means that every other spawned instance will follow what this Master instance does."""
     global master_instance
     master_instance = Pywinauto_Window_Connection(window_name=instance)
-    Click_Input_Fixed(method=master_instance.Button15.click_input) #This button opens the 'Sync operations' panel in that instance
+    ClickInputFixed(method=master_instance.Button15.click_input) #This button opens the 'Sync operations' panel in that instance
     master_instance['Select allCheckBox'].click()
-    Click_Input_Fixed(method=master_instance['Start syncButton'].click_input())
+    ClickInputFixed(method=master_instance['Start syncButton'].click_input())
     #Now, all spawned instances belongs to this Master instance : each instance follows the inputs (like a macro) of what the master instance does. Obviously, these instances may experience time delays...
     print(f"-> [{Colors['Green']}Done{Colors['Reset']}!]")
 
@@ -116,9 +125,9 @@ def Start_MasterInstance_Macro(instance: Desktop): #The problem is that there ar
     """This function starts the macro that will automate us the process of opening the game and pickaxing on the Ad chest to watch the 30 seconds Ad -> All other instances will follow what that macro does"""
     
     print(f"[{Colors['Blue']}BlueStacks{Colors['Reset']}]: Starting the macro...", end="")
-    Click_Input_Fixed(method=instance.Button14.click_input) #Opens the Macro Manager window
+    ClickInputFixed(method=instance.Button14.click_input) #Opens the Macro Manager window
     sleep(0.5)
-    Click_Input_Fixed(method=instance.Button10.click_input) #Actives the first macro of the list
+    ClickInputFixed(method=instance.Button10.click_input) #Actives the first macro of the list
     sleep(0.5) #From that point, the macro will start and will take around 2 mins to finish, while python will do nothing. -> Python will pause its execution until the macro finishes.
     print(f"-> [{Colors['Green']}Done{Colors['Reset']}!]")
 
@@ -126,9 +135,9 @@ def Start_MasterInstance_Macro(instance: Desktop): #The problem is that there ar
 
 #--- _ ---
 
-def Enstablish_AdbConnections():
-    run("adb kill-server", shell=False, stderr=DEVNULL)
-    run("adb start-server", shell=False, stderr=DEVNULL)
+def EnstablishAdbConnections():
+    run("adb kill-server & adb start-server", shell=True, stderr=DEVNULL)
+    sleep(1)
     print(f"[{Colors['Green']}Android Debugging Bridge{Colors['Reset']}]: Checking adb-server status...".ljust(ljust_val), flush=True, end=f"-> [{Colors['Red']}Offline{Colors['Reset']}!]")
     global client
     client = AdbClient(host="127.0.0.1", port=5037) #The daemon must run in background already
@@ -160,15 +169,30 @@ def Enstablish_AdbConnections():
         
     #Once all BlueStacks instances have been connected trought adb client and assigned each connection to a python global variable
 
+def GetScreenshot(instance, name='Screenshot', folder=''):
+    result = instance.device.screencap()
+    with open(f"./Screenshots/{folder}{name}.png", "wb") as fp:
+        fp.write(result)
 
-def Syncronize_Actions(actions: str): #takes in input a str format of some commands (actions) to execute on each instance instances
+def CompareScreenshots(first_screenshot, second_screenshot) -> bool:
+    """Returns True if both screenshots are different, else False"""
+    return imread(first_screenshot).shape != imread(second_screenshot).shape #If two screenshots show the same image, then they allocate the same size of bytes
+
+number: int
+result: bool
+def SyncronizeActions(actions: str, DecFunction=None): #takes in input a str format of some commands (actions) to execute on each instance instances
     for number in range(INSTANCES_TO_START):
-        instance = globals()[f'instance_{number}']
+        # instance = globals()[f'instance_{number}']
         exec(actions)
+        if DecFunction: DecFunction(number) #This function adds some code like decorators but inside the function
         sleep(0.2)
-    sleep(1)
 
-def Start_the_Game():
+def TakeScreenshots(delay: float = 15): #Remember that once took the screenshot, the in-game time changes (Morning, Afternoon, Night...) and that falsificates the screenshots
+    SyncronizeActions("""GetScreenshot(instance, name=f'Instance-{number}-BeforeAd-Screenshot', folder='Before-Ad/')""")
+    sleep(delay) #All instances should get the ad appeard on the screen, if not then the code won't matter. It will just report that this instance did not watch the ad
+    SyncronizeActions("""GetScreenshot(instance, name=f'Instance-{number}-AfterHit-Screenshot', folder='After-Hit')""") #After hitting the ad-chest
+
+def StartTheGame():
     #We use a generator-func to get each instance's first psg2 app package to be started
     global get_package
     def get_package(instance):
@@ -177,40 +201,67 @@ def Start_the_Game():
 
     print(f"[{Colors['Green']}Android Debugging Bridge{Colors['Reset']}]: Starting pixel survival game 2 on each instance...".ljust(ljust_val), flush=True, end="")
     #For each BlueStacks Instance, we run the first psg2 app
-    Syncronize_Actions("""instance.device.shell(f'monkey -p "{next(get_package(instance))}" -c android.intent.category.LAUNCHER 1')""")
+
+    SyncronizeActions("""instance.device.shell(f'monkey -p "{next(get_package(instance))}" -c android.intent.category.LAUNCHER 1')""")
 
     #TODO: Then we SHOULD check if the app has been booted  -> we wait 13 seconds. The better way would be to screenshot the screen of each instance and check if the game has been booted
     sleep(13) #The time depends on how many Ram left the user has. I tested it on 3 Gb Ram remaining
     print(f"-> [{Colors['Green']}Done{Colors['Reset']}!]")
 
-    Syncronize_Actions("""instance.device.shell(f"input tap {in_game_buttons['Play'][0]} {in_game_buttons['Play'][1]}")""") #Clicks on 'Play' button
-    Syncronize_Actions("""instance.device.shell(f"input tap {in_game_buttons['First Character'][0]} {in_game_buttons['First Character'][1]}")""")
-    Syncronize_Actions("""instance.device.shell(f"input tap {in_game_buttons['Single Player'][0]} {in_game_buttons['Single Player'][1]}")""")
-    Syncronize_Actions("""instance.device.shell(f"input touchscreen swipe {in_game_buttons['Left Movement'][0]} {in_game_buttons['Left Movement'][1]} {in_game_buttons['Left Movement'][0]} {in_game_buttons['Left Movement'][1]} 1350")""")
+def WalkToAdChest():
+    print(f"[{Colors['Red']}In-Game Action{Colors['Reset']}]: Set bots in front of ad-chest...".ljust(ljust_val), flush=True, end="")
+    SyncronizeActions("""instance.device.shell(f"input tap {in_game_buttons['Play'][0]} {in_game_buttons['Play'][1]}")""") #Clicks on 'Play' button
+    SyncronizeActions("""instance.device.shell(f"input tap {in_game_buttons['First Character'][0]} {in_game_buttons['First Character'][1]}")""")
+    SyncronizeActions("""instance.device.shell(f"input tap {in_game_buttons['Single Player'][0]} {in_game_buttons['Single Player'][1]}")""")
+    SyncronizeActions("""instance.device.shell(f"input touchscreen swipe {in_game_buttons['Left Movement'][0]} {in_game_buttons['Left Movement'][1]} {in_game_buttons['Left Movement'][0]} {in_game_buttons['Left Movement'][1]} 1350")""")
+    print(f"-> [{Colors['Green']}Done{Colors['Reset']}!]")
 
+def CheckAdStatus():
+    """Checks whatever the ad has been showed on the screen or not"""
+    #Once all instances booted the game and hitted the ad-chest, we get a screenshot per each instance and then compare that screenshot with the screenshot of the next 5 seconds.
+    #If both screenshots are the same, it means that the ad did not jet appeard (time limit should be of 15 seconds).
+    #If they are not, then the ad appeard or the game crashed.
+    
     print(f"[{Colors['Red']}In-Game Action{Colors['Reset']}]: Hitting ad-chest one time and wait for ad to come...".ljust(ljust_val), flush=True, end="")
+    SyncronizeActions("""instance.device.shell(f"input tap {in_game_buttons['Hit Button'][0]} {in_game_buttons['Hit Button'][1]}")""")
+    print(f"-> [{Colors['Green']}Done{Colors['Reset']}!]")
+    print('Checking if the ad appeard...')
+    #TODO: Make sure all folders are present in the directory when the program has been launched.
+    TakeScreenshots()
+    def UpdateStatus(number):
+        if not result:
+            instances_status[f'instance_{number}']='Watching-Ad'
+        else:
+            instances_status[f'instance_{number}']='Problem: Ad-did-not-show!'
 
-    Syncronize_Actions("""instance.device.shell(f"input tap {in_game_buttons['Hit Button'][0]} {in_game_buttons['Hit Button'][1]}")""")
+    SyncronizeActions(
+        """
+before_ad_screenshots: list = [screenshot for screenshot in listdir("./Screenshots/Before-Ad")]
+after_hit_screenshots: list = [screenshot for screenshot in listdir("./Screenshots/After-Hit")]
+global result
+result=CompareScreenshots("./Screenshots/Before-Ad/" + before_ad_screenshots[number], "./Screenshots/After-Hit/" + after_hit_screenshots[number])""",
+        DecFunction = UpdateStatus
+    )
 
-    #Now the Ad should appear in about 10 seconds...
-    print(f"-> [{Colors['Red']}Ad Watched{Colors['Reset']}!]")
+    print(instances_status)
 
-
-
-
+    #From there: there could be one or more instances that did not show the ad, so we have to filter which instance did show the ad.
+    #Once there: need to close the ad.
 
 
 #--------- Main - Code ---------
-Start_BlueStacks()
+StartBlueStacks()
 instance_manager = Pywinauto_Window_Connection(INSTANCE_MANAGER_NAME)
 # instance_manager.print_control_identifiers()
 
 #This lambdafunction checks if a window is opened on the desktop
 wait_window = lambda window_name: timings.wait_until(timeout=60, retry_interval=2, func=lambda: any(process.window_text() == window_name for process in Desktop(backend="uia").windows()))
 
-Start_Instances(n=(1, INSTANCES_TO_START))
-Enstablish_AdbConnections()
-Start_the_Game()
+StartInstances(n=(1, INSTANCES_TO_START))
+EnstablishAdbConnections()
+StartTheGame()
+WalkToAdChest()
+CheckAdStatus()
 
 # Syncronize_MasterInstance(instance=f'{INSTANCES_TO_START}.Bot')
 # Start_MasterInstance_Macro(instance=f'{INSTANCES_TO_START}.Bot')
