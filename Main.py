@@ -17,11 +17,13 @@ in_game_buttons: dict[str, ('X', 'Y')] = {
     'First Character': (480, 150),
     'Single Player': (135, 300),
     'Left Movement': (110, 460),
-    'Hit Button': (850, 385)
+    'Hit Button': (850, 385),
+    'Jump Button': (762, 466)
 }
 
+import cv2
 from ppadb.client import Client as AdbClient
-from cv2 import imread
+import numpy as np
 from os import listdir, mkdir
 from time import sleep
 from subprocess import Popen, run, DEVNULL, STDOUT
@@ -41,6 +43,7 @@ INSTANCE_MANAGER_PATH = 'C:\\Program Files\\BlueStacks_nxt\\HD-MultiInstanceMana
 
 #Normally PSG 2 runs good at 1 Core and 1Gb of Ram but all depends on how many cores your CPU has and what's the Clock speed of your CPU and RAM.
 
+CLONED_APPS_AMOUT: int = 10 #-> indicates how many psg2 cloned applications each instance has (for example if you have 10 cloned apps, then the program will watch ads on each app) !The number of apps must be equal to all other instances!
 INSTANCES_TO_START: int = 3 #-> default instances ram allocation is 4 Gb, this means that to run 4 instances you need 16 Gb available!
 INSTANCES: tuple = (1, 8) #-> indicates how many instances you have and which instances to use (default: from instance at first place to instance at eighth place)
 #OCCHIO A QUESTO VALORE!!!
@@ -146,7 +149,7 @@ def EnstablishAdbConnections():
 
     #If there are more android devices connected or launched then we won't be able to identify which serial corresponds to which instance
     print(f"[{Colors['Green']}Android Debugging Bridge{Colors['Reset']}]: Checking adb devices...".ljust(ljust_val), flush=True, end=f"-> [{Colors['Red']}Not Found Yet{Colors['Reset']}!]")
-    while len(devices) != INSTANCES_TO_START:
+    while len(devices) != INSTANCES_TO_START: #This is a slow process, it depends on client.devices
         devices = client.devices()
         sleep(1)
     print("\b"*16 + f"[{Colors['Green']}Found{Colors['Reset']}!]" + " "*10)
@@ -156,7 +159,7 @@ def EnstablishAdbConnections():
             self.device: AdbClient.device = client.device(str(device_serialno))
             #Each psg2 app has differt app-package-name (storage/emulated/0/Android/Data/com.cowbeans.(...)), so we get these packages to identify each psg2 app trought the formatting of the output string of .shell() func
             self.psg2_packages: list[str] = [package.strip().split('package:')[1] for package in self.device.shell('pm list packages').split('\n') if 'com.cowbeans.' in package]
-
+            self.current_package: str
 #-> Maybe add a better output
 
     for number, device in enumerate(devices):
@@ -169,6 +172,7 @@ def EnstablishAdbConnections():
         
     #Once all BlueStacks instances have been connected trought adb client and assigned each connection to a python global variable
 
+
 def GetScreenshot(instance, name='Screenshot', folder=''):
     result = instance.device.screencap()
     with open(f"./Screenshots/{folder}{name}.png", "wb") as fp:
@@ -176,33 +180,57 @@ def GetScreenshot(instance, name='Screenshot', folder=''):
 
 def CompareScreenshots(first_screenshot, second_screenshot) -> bool:
     """Returns True if both screenshots are different, else False"""
-    return imread(first_screenshot).shape != imread(second_screenshot).shape #If two screenshots show the same image, then they allocate the same size of bytes
+    image1 = cv2.imread(first_screenshot)
+    image2 = cv2.imread(second_screenshot)
+    #As the ad takes time to load, the screen could change (for example the time-meter and the sky-color) and that tells us that the image changed even if the ad did not' show.
+    #That's why comparing both images bytes size doesn't help. So, we need to compare the similarity of the 2 screenshots.
+    
+    #Code from Chat-GPT : Maybe it can be improved but it does its job for now...
+    #Compute the absolute difference between the two images
+    difference = cv2.absdiff(image1, image2)
+    #Convert the difference to grayscale
+    gray = cv2.cvtColor(difference, cv2.COLOR_BGR2GRAY)
+    #Apply a threshold to obtain a binary mask
+    _, thresholded = cv2.threshold(gray, 30, 255, cv2.THRESH_BINARY)
+    #Calculate the number of different pixels (total distance)
+    total_diff = cv2.countNonZero(thresholded)
+    #Calculate the similarity percentage relative to the reference image
+    similarity = 1 - (total_diff / (image1.shape[0] * image1.shape[1])) #From 0.0 to 1.0
+
+    # Display the similarity percentage
+    # print(first_screenshot, '\n', second_screenshot)
+    # print(f'Similarity: {similarity * 100:.2f}%')
+
+    #The first picture represents the screen istantly after the character Hit the ad-chest, 
+    #the second picture is taken after 12-15 seconds and should show the Ad-screen which is totally different from the screenshot before.
+    #If the similarity should be less than 25% (even 45% would be fine)
+    return similarity <= 0.45
 
 number: int
 result: bool
 def SyncronizeActions(actions: str, DecFunction=None): #takes in input a str format of some commands (actions) to execute on each instance instances
     for number in range(INSTANCES_TO_START):
-        # instance = globals()[f'instance_{number}']
+        instance = globals()[f'instance_{number}']
         exec(actions)
         if DecFunction: DecFunction(number) #This function adds some code like decorators but inside the function
         sleep(0.2)
 
-def TakeScreenshots(delay: float = 15): #Remember that once took the screenshot, the in-game time changes (Morning, Afternoon, Night...) and that falsificates the screenshots
-    SyncronizeActions("""GetScreenshot(instance, name=f'Instance-{number}-BeforeAd-Screenshot', folder='Before-Ad/')""")
+def TakeScreenshots(delay: float = 10): #Remember that once took the screenshot, the in-game time changes (Morning, Afternoon, Night...) and that falsificates the screenshots
+    SyncronizeActions("""GetScreenshot(instance, name=f'Instance-{number}-BeforeAd-Screenshot', folder='Before/')""")
     sleep(delay) #All instances should get the ad appeard on the screen, if not then the code won't matter. It will just report that this instance did not watch the ad
-    SyncronizeActions("""GetScreenshot(instance, name=f'Instance-{number}-AfterHit-Screenshot', folder='After-Hit')""") #After hitting the ad-chest
+    SyncronizeActions("""GetScreenshot(instance, name=f'Instance-{number}-AfterHit-Screenshot', folder='After/')""") #After hitting the ad-chest
+
+#We use a generator-func to get each instance's first psg2 app package to be started
+def get_package(instance):
+    for package in instance.psg2_packages:
+        yield package
 
 def StartTheGame():
-    #We use a generator-func to get each instance's first psg2 app package to be started
-    global get_package
-    def get_package(instance):
-        for package in instance.psg2_packages:
-            yield package
-
-    print(f"[{Colors['Green']}Android Debugging Bridge{Colors['Reset']}]: Starting pixel survival game 2 on each instance...".ljust(ljust_val), flush=True, end="")
+    
+    print(f"[{Colors['Green']}Android Debugging Bridge{Colors['Reset']}]: Starting com.cowbeans.pixelsurvival package on each instance...".ljust(ljust_val), flush=True, end="")
     #For each BlueStacks Instance, we run the first psg2 app
 
-    SyncronizeActions("""instance.device.shell(f'monkey -p "{next(get_package(instance))}" -c android.intent.category.LAUNCHER 1')""")
+    SyncronizeActions("""instance.current_package = next(get_package(instance)); instance.device.shell(f'monkey -p "{instance.current_package}" -c android.intent.category.LAUNCHER 1')""")
 
     #TODO: Then we SHOULD check if the app has been booted  -> we wait 13 seconds. The better way would be to screenshot the screen of each instance and check if the game has been booted
     sleep(13) #The time depends on how many Ram left the user has. I tested it on 3 Gb Ram remaining
@@ -236,10 +264,10 @@ def CheckAdStatus():
 
     SyncronizeActions(
         """
-before_ad_screenshots: list = [screenshot for screenshot in listdir("./Screenshots/Before-Ad")]
-after_hit_screenshots: list = [screenshot for screenshot in listdir("./Screenshots/After-Hit")]
+before_ad_screenshots: list = [screenshot for screenshot in listdir("./Screenshots/Before")]
+after_hit_screenshots: list = [screenshot for screenshot in listdir("./Screenshots/After")]
 global result
-result=CompareScreenshots("./Screenshots/Before-Ad/" + before_ad_screenshots[number], "./Screenshots/After-Hit/" + after_hit_screenshots[number])""",
+result=CompareScreenshots("./Screenshots/Before/" + before_ad_screenshots[number], "./Screenshots/After/" + after_hit_screenshots[number])""",
         DecFunction = UpdateStatus
     )
 
@@ -248,6 +276,83 @@ result=CompareScreenshots("./Screenshots/Before-Ad/" + before_ad_screenshots[num
     #From there: there could be one or more instances that did not show the ad, so we have to filter which instance did show the ad.
     #Once there: need to close the ad.
 
+def GetImageMatches(main_image: str, match_image: str, confidence: float = 0.95) -> (bool, np.array):
+    """This function let us know if a give image (match_image) is detected inside the main image (main_image)."""
+    main_image = cv2.imread(main_image)
+    match_image = cv2.imread(match_image)
+
+    #This function does what's explained in that video minute : 
+    #https://www.youtube.com/watch?v=vXqKniVe6P8&t=3s -> min 4:30
+    result = cv2.matchTemplate(main_image, match_image, cv2.TM_CCOEFF_NORMED)
+
+    #This variable sets the percentage (from 0.0 to 1.0) of how right we want the match to be.
+    threshold = confidence
+
+    #This function filters the matches found on the image with the confidence percentage
+    locations: ('Y', 'X') = np.where(result >= threshold) #with a high confidence, there should be only 1 result
+
+    #This code just open the main_image and edits it by highlighting with rectagles the found matches.
+    # def HighlightMatches():
+    #     for pt in zip(*locations[::-1]):
+    #         bottom_right = (pt[0] + match_image.shape[1], pt[1] + match_image.shape[0])
+    #         cv2.rectangle(main_image, pt, bottom_right, (0, 255, 0), 2)
+
+    #     # Mostra l'immagine con i rettangoli disegnati
+    #     cv2.imshow('Corrispondenze', main_image)
+    #     cv2.waitKey(0)
+    #     cv2.destroyAllWindows()
+    if locations[0].size > 0:
+        return True, locations
+    else:
+        return False, locations
+    # return locations, HighlightMatches
+
+skip_buttons: list = ["./Screenshots/Skip-Ad-Buttons/" + skip_button for skip_button in listdir("./Screenshots/Skip-Ad-Buttons") if skip_button.startswith('X-Button')]
+def CloseAd():
+    print(f"[{Colors['Green']}Python{Colors['Reset']}]: Closing Ads...".ljust(ljust_val), flush=True, end="")
+    number = 0
+    while number < INSTANCES_TO_START:
+        instance = globals()[f'instance_{number}']
+
+        for i in range(3): #Possible times that X button can appear
+            GetScreenshot(instance, name=f'Screenshot-Ad-Finished-{number}-searchForX', folder='Before/'),
+            result, locations = GetImageMatches(
+                main_image=f'./Screenshots/Before/Screenshot-Ad-Finished-{number}-searchForX.png',
+                match_image=f'./Screenshots/Items-Bag-23x23.png'
+            )
+            if result:
+                break
+            for skip_button in skip_buttons:
+                result, locations = GetImageMatches(
+                    main_image=f'./Screenshots/Before/Screenshot-Ad-Finished-{number}-searchForX.png',
+                    match_image=skip_button
+                )
+                if result: #If any match was found:
+                    instance.device.shell(f'input tap {locations[1][0]} {locations[0][0]}') #Clicks on the X button
+                    break #CLOSE THE AD AND THEN CHECK IF OTHER X BUTTONS APPEARD
+            else:
+                #HERE THE AD IS PROBABLY A 'CLICK ">>" TO PROCEED' BUT THIS BUTTON IS HARD TO BE MATCHED AS IT'S TRANSPARENT AND SO THE BACKGROUND CHANGES EVERYTIME
+                instance.device.shell(f'input tap 935.5 20.0') #Clicks on the ">>" button
+                #This could also open google play store!
+            sleep(1)
+        number += 1
+    print(f"-> [{Colors['Green']}Done{Colors['Reset']}!]")
+
+def JumpForRewards():
+    """Once the function has been closed, the chest drops all the rewards which can glitch and not be collected
+       So we let the character jump twice to collect all dropped items"""
+    SyncronizeActions(
+        """
+instance.device.shell(f"input tap {in_game_buttons['Jump Button'][0]} {in_game_buttons['Jump Button'][1]}
+sleep(0.25)
+instance.device.shell(f"input tap {in_game_buttons['Jump Button'][0]} {in_game_buttons['Jump Button'][1]}"""
+    )
+    pass
+
+def ExitFromTheGame():
+    print(f"[{Colors['Green']}Android Debugging Bridge{Colors['Reset']}]: Stopping com.cowbeans.pixelsurvival package on each instance...".ljust(ljust_val), flush=True, end="")
+    SyncronizeActions("""instance.device.shell(f'am force-stop "{instance.current_package}"')""")
+    print(f"-> [{Colors['Green']}Done{Colors['Reset']}!]")
 
 #--------- Main - Code ---------
 StartBlueStacks()
@@ -257,11 +362,18 @@ instance_manager = Pywinauto_Window_Connection(INSTANCE_MANAGER_NAME)
 #This lambdafunction checks if a window is opened on the desktop
 wait_window = lambda window_name: timings.wait_until(timeout=60, retry_interval=2, func=lambda: any(process.window_text() == window_name for process in Desktop(backend="uia").windows()))
 
-StartInstances(n=(1, INSTANCES_TO_START))
+# StartInstances(n=(1, INSTANCES_TO_START))
 EnstablishAdbConnections()
-StartTheGame()
-WalkToAdChest()
-CheckAdStatus()
+for cloned_app in range(CLONED_APPS_AMOUT): #Once all apps got done, the program will end. If you want to let the program stay in the background and start again once 1 hour passed then add datatime module and work on it.
+    StartTheGame()
+    WalkToAdChest()
+    CheckAdStatus()
+    sleep(30) #time required to get all ads done that can be closed (the real time passed is like 40 seconds because of the 10 second delay on CheckAdStatus())
+    CloseAd()
+    ExitFromTheGame()
+    sleep(3)
+
+
 
 # Syncronize_MasterInstance(instance=f'{INSTANCES_TO_START}.Bot')
 # Start_MasterInstance_Macro(instance=f'{INSTANCES_TO_START}.Bot')
