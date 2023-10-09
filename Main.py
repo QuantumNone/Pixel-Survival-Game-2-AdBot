@@ -48,6 +48,10 @@ INSTANCES_TO_START: int = 3 #-> default instances ram allocation is 4 Gb, this m
 INSTANCES: tuple = (1, 8) #-> indicates how many instances you have and which instances to use (default: from instance at first place to instance at eighth place)
 #OCCHIO A QUESTO VALORE!!!
 assert INSTANCES_TO_START <= INSTANCES[1]
+try: mkdir('./Screenshots/Before')
+except: pass
+try: mkdir('./Screenshots/After')
+except: pass
 
 instances_status: dict = {
     f'instance_{num}': 'Offline' for num in range(INSTANCES_TO_START)
