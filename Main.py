@@ -176,7 +176,6 @@ def EnstablishAdbConnections():
         
     #Once all BlueStacks instances have been connected trought adb client and assigned each connection to a python global variable
 
-
 def GetScreenshot(instance, name='Screenshot', folder=''):
     result = instance.device.screencap()
     with open(f"./Screenshots/{folder}{name}.png", "wb") as fp:
@@ -358,6 +357,26 @@ def ExitFromTheGame():
     SyncronizeActions("""instance.device.shell(f'am force-stop "{instance.current_package}"')""")
     print(f"-> [{Colors['Green']}Done{Colors['Reset']}!]")
 
+def ResetGoogleAdsID():
+    SyncronizeActions(
+        """instance.device.shell('monkey -p "com.android.settings" -c android.intent.category.LAUNCHER 1')"""
+    )
+    SyncronizeActions(
+        """instance.device.shell('input tap 35 361')""" #Clicks on Google setting
+    )
+    SyncronizeActions(
+        """instance.device.shell('input tap 42 509')""" #Clicks on 'Ads' button
+    )
+    SyncronizeActions(
+        """instance.device.shell('input tap 210 99')""" #Clicks on 'Reset Advertising ID' button
+    )
+    SyncronizeActions(
+        """instance.device.shell('input tap 670 340')""" #Clicks on 'Confirm' button
+    )
+    SyncronizeActions(
+        """instance.device.shell('input keyevent 3')""" #Simulates 'Home' button
+    )
+
 #--------- Main - Code ---------
 StartBlueStacks()
 instance_manager = Pywinauto_Window_Connection(INSTANCE_MANAGER_NAME)
@@ -368,6 +387,7 @@ wait_window = lambda window_name: timings.wait_until(timeout=60, retry_interval=
 
 # StartInstances(n=(1, INSTANCES_TO_START))
 EnstablishAdbConnections()
+ResetGoogleAdsID()
 for cloned_app in range(CLONED_APPS_AMOUT): #Once all apps got done, the program will end. If you want to let the program stay in the background and start again once 1 hour passed then add datatime module and work on it.
     StartTheGame()
     WalkToAdChest()
